@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -421,4 +420,5 @@ func main() {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal("Server failed to start: ", err)
 	}
+
 }
