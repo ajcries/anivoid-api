@@ -81,18 +81,19 @@ type ScraperEngine struct {
 func NewScraperEngine() *ScraperEngine {
 	return &ScraperEngine{
 		client: &http.Client{
-			Timeout: 12 * time.Second,
+			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
 				MaxIdleConns:        100,
 				MaxIdleConnsPerHost: 20,
-				IdleConnTimeout:     30 * time.Second,
+				IdleConnTimeout:     60 * time.Second,
 			},
 		},
 		userAgents: []string{
-			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-			"Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Android 15; Mobile; rv:131.0) Gecko/131.0 Firefox/131.0",
+			"Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
 		},
 	}
 }
@@ -116,6 +117,7 @@ func (s *ScraperEngine) getDocument(url string) (*goquery.Document, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("Failed to fetch page %s: status %d", url, resp.StatusCode)
 		return nil, fmt.Errorf("http %d for %s", resp.StatusCode, url)
 	}
 
@@ -141,6 +143,7 @@ func (s *ScraperEngine) getAjax(url string, referer string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("AJAX request failed %s: status %d", url, resp.StatusCode)
 		return nil, fmt.Errorf("ajax %d for %s", resp.StatusCode, url)
 	}
 
@@ -154,13 +157,11 @@ func (s *ScraperEngine) GetTrending() ([]Anime, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	var items []Anime
 	doc.Find("#anime-trending .item, .film_list-wrap .flw-item").Each(func(_ int, sel *goquery.Selection) {
 		title := strings.TrimSpace(sel.Find(".film-name, .number .film-title").Text())
 		href, _ := sel.Find("a").Attr("href")
 		poster, _ := sel.Find("img").Attr("data-src")
-
 		id := ""
 		if href != "" {
 			parts := strings.Split(strings.Trim(href, "/"), "/")
@@ -168,7 +169,6 @@ func (s *ScraperEngine) GetTrending() ([]Anime, error) {
 				id = parts[len(parts)-1]
 			}
 		}
-
 		if title != "" && id != "" {
 			items = append(items, Anime{Title: title, ID: id, Poster: poster})
 		}
@@ -181,10 +181,8 @@ func (s *ScraperEngine) GetSidebarList(listType string) ([]Anime, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	var items []Anime
 	searchTerm := strings.ToLower(strings.ReplaceAll(listType, "-", " "))
-
 	doc.Find(".block_area-realtime").Each(func(_ int, block *goquery.Selection) {
 		header := strings.ToLower(strings.TrimSpace(block.Find(".main-heading").Text()))
 		if strings.Contains(header, searchTerm) {
@@ -192,7 +190,6 @@ func (s *ScraperEngine) GetSidebarList(listType string) ([]Anime, error) {
 				title := strings.TrimSpace(li.Find(".film-name").Text())
 				href, _ := li.Find("a").Attr("href")
 				poster, _ := li.Find("img").Attr("data-src")
-
 				id := ""
 				if href != "" {
 					parts := strings.Split(strings.Trim(href, "/"), "/")
@@ -200,7 +197,6 @@ func (s *ScraperEngine) GetSidebarList(listType string) ([]Anime, error) {
 						id = parts[len(parts)-1]
 					}
 				}
-
 				if title != "" && id != "" {
 					items = append(items, Anime{Title: title, ID: id, Poster: poster})
 				}
@@ -216,13 +212,11 @@ func (s *ScraperEngine) SearchAnime(title string) ([]Anime, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	var results []Anime
 	doc.Find(".film_list-wrap .flw-item").Each(func(_ int, item *goquery.Selection) {
 		title := strings.TrimSpace(item.Find(".film-name").Text())
 		href, _ := item.Find(".film-poster a").Attr("href")
 		poster, _ := item.Find("img").Attr("data-src")
-
 		id := ""
 		if href != "" {
 			parts := strings.Split(strings.Trim(href, "/"), "/")
@@ -230,7 +224,6 @@ func (s *ScraperEngine) SearchAnime(title string) ([]Anime, error) {
 				id = parts[len(parts)-1]
 			}
 		}
-
 		if title != "" && id != "" {
 			results = append(results, Anime{Title: title, ID: id, Poster: poster})
 		}
@@ -241,26 +234,22 @@ func (s *ScraperEngine) SearchAnime(title string) ([]Anime, error) {
 func (s *ScraperEngine) GetFranchise(title string) ([]FranchiseItem, error) {
 	results, err := s.SearchAnime(title)
 	if err != nil || len(results) == 0 {
-		return nil, err
+		return nil, fmt.Errorf("no search results for %q", title)
 	}
-
 	main := results[0]
 	watchURL := BaseURL + "/watch/" + main.ID
 	doc, err := s.getDocument(watchURL)
 	if err != nil {
 		return nil, err
 	}
-
 	var franchise []FranchiseItem
 	franchise = append(franchise, FranchiseItem{ID: main.ID, Title: main.Title, Poster: main.Poster})
-
 	doc.Find(".os-list a, .related .flw-item a").Each(func(_ int, sel *goquery.Selection) {
 		href, _ := sel.Attr("href")
 		t := strings.TrimSpace(sel.Text())
 		if t == "" {
 			t = sel.Find(".film-name").Text()
 		}
-
 		if href != "" && t != "" {
 			parts := strings.Split(strings.Trim(href, "/"), "/")
 			id := parts[len(parts)-1]
@@ -269,77 +258,101 @@ func (s *ScraperEngine) GetFranchise(title string) ([]FranchiseItem, error) {
 			}
 		}
 	})
-
 	return franchise, nil
 }
 
 func (s *ScraperEngine) GetEpisodes(animeID string) ([]Episode, error) {
+	episodes := []Episode{}
+
+	// 1. Try AJAX endpoint first
 	ajaxURL := fmt.Sprintf("%s/ajax/v2/episode/list/%s", BaseURL, animeID)
 	referer := fmt.Sprintf("%s/watch/%s", BaseURL, animeID)
+	body, ajaxErr := s.getAjax(ajaxURL, referer)
 
-	body, err := s.getAjax(ajaxURL, referer)
-	if err != nil {
-		return nil, err
-	}
-
-	var ajaxResp struct {
-		Status bool   `json:"status"`
-		HTML   string `json:"html"`
-	}
-
-	if err := json.Unmarshal(body, &ajaxResp); err != nil {
-		log.Printf("Episode AJAX JSON error for %s: %v - raw: %s", animeID, err, string(body[:200]))
-		return nil, fmt.Errorf("invalid episode ajax response")
-	}
-
-	if !ajaxResp.Status || ajaxResp.HTML == "" {
-		return nil, fmt.Errorf("no episode data in ajax response")
-	}
-
-	fragment, err := goquery.NewDocumentFromReader(strings.NewReader(ajaxResp.HTML))
-	if err != nil {
-		return nil, err
-	}
-
-	var episodes []Episode
-	fragment.Find("a").Each(func(_ int, sel *goquery.Selection) {
-		epNum := strings.TrimSpace(sel.Find(".ep-num, .ssli-detail, .number").Text())
-		if epNum == "" {
-			epNum, _ = sel.Attr("data-number")
-			if epNum == "" {
-				epNum = strings.TrimSpace(sel.Text())
+	if ajaxErr == nil {
+		var ajaxResp struct {
+			Status bool   `json:"status"`
+			HTML   string `json:"html"`
+		}
+		if jsonErr := json.Unmarshal(body, &ajaxResp); jsonErr == nil && ajaxResp.Status && ajaxResp.HTML != "" {
+			fragment, fragErr := goquery.NewDocumentFromReader(strings.NewReader(ajaxResp.HTML))
+			if fragErr == nil {
+				fragment.Find("a").Each(func(_ int, sel *goquery.Selection) {
+					epNum := strings.TrimSpace(sel.Find(".ep-num, .ssli-detail, .number").Text())
+					if epNum == "" {
+						epNum, _ = sel.Attr("data-number")
+					}
+					epNum = strings.TrimSpace(strings.TrimPrefix(strings.ToUpper(epNum), "EP "))
+					title, _ := sel.Attr("title")
+					if title == "" {
+						title = sel.Find(".name, .ep-title").Text()
+					}
+					id, _ := sel.Attr("data-id")
+					if id == "" {
+						href, _ := sel.Attr("href")
+						if href != "" {
+							parts := strings.Split(strings.Trim(href, "/"), "/")
+							if len(parts) > 0 {
+								id = parts[len(parts)-1]
+							}
+						}
+					}
+					if id != "" && epNum != "" {
+						episodes = append(episodes, Episode{ID: id, Number: epNum, Title: title})
+					}
+				})
 			}
 		}
+	}
 
-		title, _ := sel.Attr("title")
-		if title == "" {
-			title = sel.Find(".name, .ep-title").Text()
-		}
-
-		id, _ := sel.Attr("data-id")
-		if id == "" {
-			href, _ := sel.Attr("href")
-			if href != "" {
-				parts := strings.Split(strings.Trim(href, "/"), "/")
-				if len(parts) > 0 {
-					id = parts[len(parts)-1]
+	// 2. Fallback: scrape initial watch page HTML
+	if len(episodes) == 0 {
+		watchURL := fmt.Sprintf("%s/watch/%s", BaseURL, animeID)
+		doc, docErr := s.getDocument(watchURL)
+		if docErr == nil {
+			selectors := []string{
+				"#detail-ss-list a",
+				".ss-list a",
+				".episode-list a",
+				".flw-item a",
+				"[data-id][href*='/watch/']",
+				".episodios a",
+			}
+			for _, selector := range selectors {
+				doc.Find(selector).Each(func(_ int, item *goquery.Selection) {
+					epNum := strings.TrimSpace(item.Find(".ep-num, .number, span").Text())
+					epNum = strings.TrimSpace(strings.TrimPrefix(strings.ToUpper(epNum), "EP "))
+					title, _ := item.Attr("title")
+					if title == "" {
+						title = item.Find(".ep-title, .name").Text()
+					}
+					id, _ := item.Attr("data-id")
+					if id == "" {
+						href, _ := item.Attr("href")
+						if href != "" {
+							parts := strings.Split(strings.Trim(href, "/"), "/")
+							if len(parts) > 1 {
+								id = parts[len(parts)-1]
+							}
+						}
+					}
+					if id != "" && epNum != "" {
+						episodes = append(episodes, Episode{ID: id, Number: epNum, Title: title})
+					}
+				})
+				if len(episodes) > 0 {
+					break
 				}
 			}
 		}
+	}
 
-		epNum = strings.TrimPrefix(strings.ToUpper(epNum), "EP ")
-		epNum = strings.TrimSpace(epNum)
+	if len(episodes) == 0 {
+		log.Printf("No episodes found for %s (AJAX + HTML fallback failed)", animeID)
+		return []Episode{}, nil // Return empty slice instead of error
+	}
 
-		if id != "" && epNum != "" {
-			episodes = append(episodes, Episode{
-				ID:     id,
-				Number: epNum,
-				Title:  title,
-			})
-		}
-	})
-
-	log.Printf("Found %d episodes for anime %s", len(episodes), animeID)
+	log.Printf("Scraped %d episodes for %s", len(episodes), animeID)
 	return episodes, nil
 }
 
@@ -347,19 +360,17 @@ func (s *ScraperEngine) GetRecommendations(animeID string, limit int) ([]Anime, 
 	watchURL := BaseURL + "/watch/" + animeID
 	doc, err := s.getDocument(watchURL)
 	if err != nil {
-		return nil, err
+		log.Printf("Recommendations fetch failed for %s: %v", animeID, err)
+		return []Anime{}, nil
 	}
-
 	var recs []Anime
 	doc.Find(".block_area-related .flw-item").EachWithBreak(func(_ int, item *goquery.Selection) bool {
 		if len(recs) >= limit {
 			return false
 		}
-
 		title := strings.TrimSpace(item.Find(".film-name").Text())
 		poster, _ := item.Find("img").Attr("data-src")
 		href, _ := item.Find("a").Attr("href")
-
 		id := ""
 		if href != "" {
 			parts := strings.Split(strings.Trim(href, "/"), "/")
@@ -367,13 +378,11 @@ func (s *ScraperEngine) GetRecommendations(animeID string, limit int) ([]Anime, 
 				id = parts[len(parts)-1]
 			}
 		}
-
 		if title != "" && id != "" {
 			recs = append(recs, Anime{Title: title, ID: id, Poster: poster})
 		}
 		return true
 	})
-
 	return recs, nil
 }
 
@@ -388,7 +397,6 @@ func rateLimitMiddleware() gin.HandlerFunc {
 			rateLimiter.ips[ip] = limiter
 		}
 		rateLimiter.mu.Unlock()
-
 		if !limiter.Allow() {
 			c.JSON(http.StatusTooManyRequests, gin.H{"status": "error", "message": "Too many requests"})
 			c.Abort()
@@ -404,18 +412,15 @@ func cacheMiddleware(duration time.Duration) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-
 		key := c.Request.URL.String()
 		if cached, found := memoryCache.Get(key); found {
 			c.Data(http.StatusOK, "application/json", cached.([]byte))
 			c.Abort()
 			return
 		}
-
 		w := &responseWriter{ResponseWriter: c.Writer, body: []byte{}}
 		c.Writer = w
 		c.Next()
-
 		if c.Writer.Status() == http.StatusOK && len(w.body) > 0 {
 			memoryCache.Set(key, w.body, duration)
 		}
@@ -439,13 +444,11 @@ func discoverHandler(s *ScraperEngine) gin.HandlerFunc {
 		topAiring, _ := s.GetSidebarList("top airing")
 		mostPopular, _ := s.GetSidebarList("most popular")
 		mostFavorite, _ := s.GetSidebarList("most favorite")
-
 		resp := DiscoveryResponse{Status: "success"}
 		resp.Data.Trending = trending
 		resp.Data.TopAiring = topAiring
 		resp.Data.MostPopular = mostPopular
 		resp.Data.MostFavorite = mostFavorite
-
 		c.JSON(http.StatusOK, resp)
 	}
 }
@@ -457,10 +460,10 @@ func franchiseHandler(s *ScraperEngine) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "title required"})
 			return
 		}
-
 		data, err := s.GetFranchise(title)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			log.Printf("Franchise error for %q: %v", title, err)
+			c.JSON(http.StatusOK, gin.H{"status": "success", "data": []FranchiseItem{}})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "success", "data": data})
@@ -474,13 +477,13 @@ func episodesHandler(s *ScraperEngine) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "id required"})
 			return
 		}
-
-		data, err := s.GetEpisodes(id)
+		eps, err := s.GetEpisodes(id)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			log.Printf("Episodes error for %s: %v", id, err)
+			c.JSON(http.StatusOK, gin.H{"status": "success", "episodes": []Episode{}})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "success", "episodes": data})
+		c.JSON(http.StatusOK, gin.H{"status": "success", "episodes": eps})
 	}
 }
 
@@ -491,18 +494,18 @@ func recommendationsHandler(s *ScraperEngine) gin.HandlerFunc {
 		if l := c.Query("limit"); l != "" {
 			fmt.Sscanf(l, "%d", &limit)
 		}
-
-		data, err := s.GetRecommendations(id, limit)
+		recs, err := s.GetRecommendations(id, limit)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			log.Printf("Recommendations error for %s: %v", id, err)
+			c.JSON(http.StatusOK, RecommendationResponse{Status: "success", Data: []Anime{}})
 			return
 		}
-		c.JSON(http.StatusOK, RecommendationResponse{Status: "success", Data: data})
+		c.JSON(http.StatusOK, RecommendationResponse{Status: "success", Data: recs})
 	}
 }
 
 func healthHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "healthy", "version": "1.2.0"})
+	c.JSON(http.StatusOK, gin.H{"status": "healthy", "version": "1.3.0"})
 }
 
 func main() {
@@ -536,8 +539,8 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Starting server on port %s", port)
+	log.Printf("Starting AniVoid API on :%s", port)
 	if err := http.ListenAndServe(":"+port, router); err != nil {
-		log.Fatal(err)
+		log.Fatal("Server failed:", err)
 	}
 }
